@@ -12,7 +12,7 @@ function statusClass(status: string) {
   return "status status-" + status.replace(/\s+/g, "-");
 }
 
-export default function OrdersList({ orders }: { orders: Order[] }) {
+export default function OrdersList({ orders, basePath = "/pedidos" }: { orders: Order[]; basePath?: string }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<OrderStatus | "">("");
 
@@ -55,7 +55,7 @@ export default function OrdersList({ orders }: { orders: Order[] }) {
 
       <div className="order-list">
         {filtered.length ? filtered.map(order => (
-          <Link className="order-item" href={`/pedidos/${encodeURIComponent(order.id)}`} key={order.id}>
+          <Link className="order-item" href={`${basePath}/${encodeURIComponent(order.id)}`} key={order.id}>
             <div>
               <div className="order-id">{order.id}</div>
               <div className="meta">{order.cliente.codigo} — {order.cliente.nombre}</div>
