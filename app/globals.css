@@ -71,6 +71,9 @@ a { color: inherit; }
 .grid { display: grid; gap: 14px; }
 .grid.two { grid-template-columns: 1fr; }
 .field { display: grid; gap: 7px; min-width: 0; }
+.field-help { color: var(--muted); font-size: .86rem; line-height: 1.35; }
+.internal-note { padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: #f8fafb; }
+.internal-note-panel { margin-top: 20px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: #f8fafb; }
 label, .label { font-weight: 700; font-size: .95rem; }
 input, select, textarea {
   width: 100%;
@@ -219,7 +222,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .shell { padding: 24px 20px 70px; }
   .grid.two { grid-template-columns: 1fr 1fr; }
   .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .product-entry { grid-template-columns: minmax(0, 1fr) 150px auto; align-items: end; }
+  .product-entry { grid-template-columns: minmax(0, 1.6fr) minmax(110px, .55fr) minmax(100px, .45fr) minmax(120px, .6fr); align-items: end; }
+  .product-entry .primary { grid-column: 1 / -1; }
   .product-entry .primary { min-width: 120px; }
   .line-card { grid-template-columns: minmax(0,1fr) auto; align-items: center; }
   .line-actions { grid-template-columns: auto auto; }
@@ -230,6 +234,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 }
 @media (min-width: 900px) {
   .actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .product-entry { grid-template-columns: minmax(0, 1.8fr) 120px 100px 130px auto; }
+  .product-entry .primary { grid-column: auto; }
 }
 
 @media print {
