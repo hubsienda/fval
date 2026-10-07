@@ -4,7 +4,7 @@ import path from "path";
 import { Readable } from "stream";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { getDrive } from "./google";
-import type { Order, OrderDraft } from "./types";
+import { ORDER_UDMS, type Order, type OrderDraft, type OrderLine, type OrderUdm } from "./types";
 
 const folderId = () => {
   const value = process.env.GOOGLE_PEDIDOS_FOLDER_ID;
@@ -51,10 +51,10 @@ function csvCell(value: unknown) {
 }
 
 export function orderCsv(order: Order) {
-  const headers = ["pedido","fecha","estado","id_empleado","empleado","codigo_cliente","cliente","producto","cantidad","comentarios"];
+  const headers = ["pedido","fecha","estado","id_empleado","empleado","codigo_cliente","cliente","producto","cantidad","udm","precio_eur","comentarios"];
   const rows = order.lineas.map(line => [
     order.id, order.fecha, order.estado, order.empleado.id, order.empleado.nombre,
-    order.cliente.codigo, order.cliente.nombre, line.producto, line.cantidad, order.comentarios
+    order.cliente.codigo, order.cliente.nombre, line.producto, line.cantidad, line.udm, line.precio ?? "", order.comentarios
   ]);
   return "\uFEFF" + [headers, ...rows].map(row => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
@@ -95,12 +95,16 @@ export async function orderPdf(order: Order) {
 
   page.drawRectangle({ x: 45, y: y - 8, width: 505, height: 26, color: rgb(0.94,0.94,0.94) });
   page.drawText("PRODUCTO", { x: 55, y, size: 10, font: bold });
-  page.drawText("CANTIDAD", { x: 455, y, size: 10, font: bold });
+  page.drawText("CANT.", { x: 365, y, size: 10, font: bold });
+  page.drawText("UdM", { x: 425, y, size: 10, font: bold });
+  page.drawText("PRECIO €", { x: 475, y, size: 10, font: bold });
   y -= 28;
 
   for (const line of order.lineas) {
-    page.drawText(line.producto.slice(0, 62), { x: 55, y, size: 10.5, font: normal });
-    page.drawText(String(line.cantidad), { x: 470, y, size: 10.5, font: normal });
+    page.drawText(line.producto.slice(0, 45), { x: 55, y, size: 10.5, font: normal });
+    page.drawText(String(line.cantidad), { x: 372, y, size: 10.5, font: normal });
+    page.drawText(line.udm, { x: 425, y, size: 10.5, font: normal });
+    page.drawText(line.precio == null ? "—" : line.precio.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), { x: 482, y, size: 10.5, font: normal });
     y -= 21;
   }
 
@@ -140,7 +144,7 @@ async function exists(id: string) {
 function orderIdNow() {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
-  return `FVAL-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  return `FVAL-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`;
 }
 
 export async function generateOrderId() {
@@ -206,6 +210,21 @@ export async function saveOrder(draft: OrderDraft) {
   }
 }
 
+
+function normaliseOrder(raw: Order): Order {
+  return {
+    ...raw,
+    lineas: (raw.lineas ?? []).map((line) => {
+      const candidate = line as Partial<OrderLine> & { producto: string; cantidad: number };
+      const udm: OrderUdm = candidate.udm && ORDER_UDMS.includes(candidate.udm as OrderUdm) ? candidate.udm as OrderUdm : "Box";
+      const precio = typeof candidate.precio === "number" && Number.isFinite(candidate.precio) && candidate.precio >= 0 ? candidate.precio : null;
+      return { producto: candidate.producto, cantidad: candidate.cantidad, udm, precio };
+    }),
+    notaInterna: typeof raw.notaInterna === "string" ? raw.notaInterna : "",
+    notaInternaActualizada: typeof raw.notaInternaActualizada === "string" ? raw.notaInternaActualizada : undefined
+  };
+}
+
 export async function listOrders(): Promise<Order[]> {
   const drive = getDrive();
   const res = await drive.files.list({
@@ -220,7 +239,7 @@ export async function listOrders(): Promise<Order[]> {
     if (!f.id) return null;
     try {
       const data = await drive.files.get({ fileId: f.id, alt: "media", supportsAllDrives: true }, { responseType: "text" });
-      return (typeof data.data === "string" ? JSON.parse(data.data) : data.data) as Order;
+      return normaliseOrder((typeof data.data === "string" ? JSON.parse(data.data) : data.data) as Order);
     } catch { return null; }
   }));
   return orders.filter((x): x is Order => Boolean(x));
@@ -231,7 +250,7 @@ export async function getOrder(id: string): Promise<Order | null> {
   if (!fileId) return null;
   const drive = getDrive();
   const data = await drive.files.get({ fileId, alt: "media", supportsAllDrives: true }, { responseType: "text" });
-  return (typeof data.data === "string" ? JSON.parse(data.data) : data.data) as Order;
+  return normaliseOrder((typeof data.data === "string" ? JSON.parse(data.data) : data.data) as Order);
 }
 
 export async function updateOrder(order: Order) {
@@ -239,6 +258,16 @@ export async function updateOrder(order: Order) {
   await replace(order.id + ".pdf", "application/pdf", await orderPdf(order));
   await replace(order.id + ".csv", "text/csv; charset=utf-8", orderCsv(order));
   return order;
+}
+
+export async function updateInternalNote(order: Order, notaInterna: string) {
+  const updated: Order = {
+    ...order,
+    notaInterna,
+    notaInternaActualizada: new Date().toISOString()
+  };
+  await replace(updated.id + ".json", "application/json", JSON.stringify(updated, null, 2));
+  return updated;
 }
 
 export async function getOrderFile(id: string, type: "pdf" | "csv") {
