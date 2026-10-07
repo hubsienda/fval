@@ -1,4 +1,5 @@
 import OrderForm from "@/components/OrderForm";
+import RefreshMasterDataButton from "@/components/RefreshMasterDataButton";
 import { requireSession } from "@/lib/auth";
 import { getClients, getEmployees, getProducts } from "@/lib/google";
 
@@ -28,5 +29,10 @@ export default async function PedidoPage() {
       </section>
     );
   }
-  return <OrderForm clients={clients} products={products} employees={employees} today={todayMadrid()} />;
+  return (
+    <>
+      <RefreshMasterDataButton />
+      <OrderForm clients={clients} products={products} employees={employees} today={todayMadrid()} />
+    </>
+  );
 }
