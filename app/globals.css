@@ -277,6 +277,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .sep { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .print-only { display: none; }
 .empty { padding: 20px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; }
+.data-refresh { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 0 0 10px; flex-wrap: wrap; }
+.compact-action { min-height: 40px; padding: 8px 12px; font-size: .82rem; }
 
 @media (min-width: 680px) {
   .shell { padding: 24px 20px 70px; }
