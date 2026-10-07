@@ -6,11 +6,17 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { getDrive } from "./google";
 import { ORDER_UDMS, type Order, type OrderDraft, type OrderLine, type OrderUdm } from "./types";
 
-const folderId = () => {
-  const value = process.env.GOOGLE_PEDIDOS_FOLDER_ID;
-  if (!value) throw new Error("GOOGLE_PEDIDOS_FOLDER_ID no configurado.");
+type OrderLocation = "active" | "archived";
+
+const requiredFolder = (name: "GOOGLE_PEDIDOS_ACTIVOS_FOLDER_ID" | "GOOGLE_PEDIDOS_ARCHIVADOS_FOLDER_ID") => {
+  const value = process.env[name];
+  if (!value) throw new Error(name + " no configurado.");
   return value;
 };
+
+const activeFolderId = () => requiredFolder("GOOGLE_PEDIDOS_ACTIVOS_FOLDER_ID");
+const archivedFolderId = () => requiredFolder("GOOGLE_PEDIDOS_ARCHIVADOS_FOLDER_ID");
+const folderFor = (location: OrderLocation) => location === "active" ? activeFolderId() : archivedFolderId();
 
 const q = (value: string) => value.replace(/'/g, "\\'");
 
@@ -129,16 +135,20 @@ export async function orderPdf(order: Order) {
   return Buffer.from(await pdf.save());
 }
 
-async function exists(id: string) {
+async function listNamedFile(folderId: string, name: string) {
   const drive = getDrive();
   const res = await drive.files.list({
-    q: `'${q(folderId())}' in parents and name='${q(id)}.json' and trashed=false`,
-    fields: "files(id)",
-    pageSize: 1,
+    q: `'${q(folderId)}' in parents and name='${q(name)}' and trashed=false`,
+    fields: "files(id,name)",
+    pageSize: 2,
     includeItemsFromAllDrives: true,
     supportsAllDrives: true
   });
-  return Boolean(res.data.files?.length);
+  return res.data.files?.[0] ?? null;
+}
+
+async function exists(id: string) {
+  return Boolean(await listNamedFile(activeFolderId(), id + ".json"));
 }
 
 function orderIdNow() {
@@ -156,11 +166,11 @@ export async function generateOrderId() {
   throw new Error("No se pudo generar un identificador único de pedido.");
 }
 
-async function upload(name: string, mimeType: string, body: Buffer | string) {
+async function upload(folderId: string, name: string, mimeType: string, body: Buffer | string) {
   const drive = getDrive();
   const mediaBody = typeof body === "string" ? Readable.from([body]) : Readable.from(body);
   const res = await drive.files.create({
-    requestBody: { name, parents: [folderId()], mimeType },
+    requestBody: { name, parents: [folderId], mimeType },
     media: { mimeType, body: mediaBody },
     fields: "id",
     supportsAllDrives: true
@@ -169,47 +179,19 @@ async function upload(name: string, mimeType: string, body: Buffer | string) {
   return res.data.id;
 }
 
-async function findFile(name: string) {
-  const drive = getDrive();
-  const res = await drive.files.list({
-    q: `'${q(folderId())}' in parents and name='${q(name)}' and trashed=false`,
-    fields: "files(id,name)",
-    pageSize: 2,
-    includeItemsFromAllDrives: true,
-    supportsAllDrives: true
-  });
-  return res.data.files?.[0]?.id ?? null;
+async function findFile(location: OrderLocation, name: string) {
+  const file = await listNamedFile(folderFor(location), name);
+  return file?.id ?? null;
 }
 
-async function replace(name: string, mimeType: string, body: Buffer | string) {
+async function replace(location: OrderLocation, name: string, mimeType: string, body: Buffer | string) {
   const drive = getDrive();
-  const id = await findFile(name);
-  if (!id) return upload(name, mimeType, body);
+  const id = await findFile(location, name);
+  if (!id) return upload(folderFor(location), name, mimeType, body);
   const mediaBody = typeof body === "string" ? Readable.from([body]) : Readable.from(body);
   await drive.files.update({ fileId: id, media: { mimeType, body: mediaBody }, supportsAllDrives: true });
   return id;
 }
-
-export async function saveOrder(draft: OrderDraft) {
-  const id = await generateOrderId();
-  const order: Order = { ...draft, id };
-  const json = JSON.stringify(order, null, 2);
-  const pdf = await orderPdf(order);
-  const csv = orderCsv(order);
-  const created: string[] = [];
-  try {
-    created.push(await upload(id + ".json", "application/json", json));
-    created.push(await upload(id + ".pdf", "application/pdf", pdf));
-    created.push(await upload(id + ".csv", "text/csv; charset=utf-8", csv));
-    return order;
-  } catch (error) {
-    logDriveError("FVAL Google Drive order write failed", error);
-    const drive = getDrive();
-    await Promise.allSettled(created.map(fileId => drive.files.delete({ fileId, supportsAllDrives: true })));
-    throw error;
-  }
-}
-
 
 function normaliseOrder(raw: Order): Order {
   return {
@@ -226,10 +208,10 @@ function normaliseOrder(raw: Order): Order {
   };
 }
 
-export async function listOrders(): Promise<Order[]> {
+async function listOrdersFrom(location: OrderLocation): Promise<Order[]> {
   const drive = getDrive();
   const res = await drive.files.list({
-    q: `'${q(folderId())}' in parents and mimeType='application/json' and trashed=false`,
+    q: `'${q(folderFor(location))}' in parents and mimeType='application/json' and trashed=false`,
     fields: "files(id,name,modifiedTime)",
     orderBy: "modifiedTime desc",
     pageSize: 200,
@@ -246,19 +228,44 @@ export async function listOrders(): Promise<Order[]> {
   return orders.filter((x): x is Order => Boolean(x));
 }
 
-export async function getOrder(id: string): Promise<Order | null> {
-  const fileId = await findFile(id + ".json");
+async function getOrderFrom(location: OrderLocation, id: string): Promise<Order | null> {
+  const fileId = await findFile(location, id + ".json");
   if (!fileId) return null;
   const drive = getDrive();
   const data = await drive.files.get({ fileId, alt: "media", supportsAllDrives: true }, { responseType: "text" });
   return normaliseOrder((typeof data.data === "string" ? JSON.parse(data.data) : data.data) as Order);
 }
 
+export async function saveOrder(draft: OrderDraft) {
+  const id = await generateOrderId();
+  const order: Order = { ...draft, id };
+  const json = JSON.stringify(order, null, 2);
+  const pdf = await orderPdf(order);
+  const csv = orderCsv(order);
+  const created: string[] = [];
+  try {
+    created.push(await upload(activeFolderId(), id + ".json", "application/json", json));
+    created.push(await upload(activeFolderId(), id + ".pdf", "application/pdf", pdf));
+    created.push(await upload(activeFolderId(), id + ".csv", "text/csv; charset=utf-8", csv));
+    return order;
+  } catch (error) {
+    logDriveError("FVAL Google Drive order write failed", error);
+    const drive = getDrive();
+    await Promise.allSettled(created.map(fileId => drive.files.delete({ fileId, supportsAllDrives: true })));
+    throw error;
+  }
+}
+
+export const listOrders = () => listOrdersFrom("active");
+export const listArchivedOrders = () => listOrdersFrom("archived");
+export const getOrder = (id: string) => getOrderFrom("active", id);
+export const getArchivedOrder = (id: string) => getOrderFrom("archived", id);
+
 export async function updateOrder(order: Order) {
   const updated: Order = { ...order, actualizado: new Date().toISOString() };
-  await replace(updated.id + ".json", "application/json", JSON.stringify(updated, null, 2));
-  await replace(updated.id + ".pdf", "application/pdf", await orderPdf(updated));
-  await replace(updated.id + ".csv", "text/csv; charset=utf-8", orderCsv(updated));
+  await replace("active", updated.id + ".json", "application/json", JSON.stringify(updated, null, 2));
+  await replace("active", updated.id + ".pdf", "application/pdf", await orderPdf(updated));
+  await replace("active", updated.id + ".csv", "text/csv; charset=utf-8", orderCsv(updated));
   return updated;
 }
 
@@ -268,26 +275,103 @@ export async function updateInternalNote(order: Order, notaInterna: string) {
     notaInterna,
     notaInternaActualizada: new Date().toISOString()
   };
-  await replace(updated.id + ".json", "application/json", JSON.stringify(updated, null, 2));
+  await replace("active", updated.id + ".json", "application/json", JSON.stringify(updated, null, 2));
   return updated;
 }
 
 export async function getOrderFile(id: string, type: "pdf" | "csv") {
-  const fileId = await findFile(id + "." + type);
+  let location: OrderLocation = "active";
+  let fileId = await findFile(location, id + "." + type);
+  if (!fileId) {
+    location = "archived";
+    fileId = await findFile(location, id + "." + type);
+  }
   if (!fileId) return null;
   const drive = getDrive();
   const data = await drive.files.get({ fileId, alt: "media", supportsAllDrives: true }, { responseType: "arraybuffer" });
   return Buffer.from(data.data as ArrayBuffer);
 }
 
-export async function diagnoseGoogle() {
-  const drive = getDrive();
-  const res = await drive.files.list({
-    q: `'${q(folderId())}' in parents and trashed=false`,
-    fields: "files(id)",
-    pageSize: 1,
-    includeItemsFromAllDrives: true,
-    supportsAllDrives: true
-  });
-  return { driveReadable: Array.isArray(res.data.files) };
+async function getCompleteOrderFiles(location: OrderLocation, id: string) {
+  const names = [id + ".json", id + ".pdf", id + ".csv"];
+  const files = await Promise.all(names.map(name => listNamedFile(folderFor(location), name)));
+  if (files.some(file => !file?.id)) {
+    throw new Error("El pedido no tiene completos los archivos JSON, PDF y CSV.");
+  }
+  return files.map(file => ({ id: file!.id!, name: file!.name! }));
 }
+
+async function moveOrder(id: string, source: OrderLocation, destination: OrderLocation) {
+  const files = await getCompleteOrderFiles(source, id);
+  const drive = getDrive();
+  const moved: string[] = [];
+  try {
+    for (const file of files) {
+      await drive.files.update({
+        fileId: file.id,
+        addParents: folderFor(destination),
+        removeParents: folderFor(source),
+        fields: "id,parents",
+        supportsAllDrives: true
+      });
+      moved.push(file.id);
+    }
+  } catch (error) {
+    logDriveError("FVAL Google Drive order move failed", error);
+    await Promise.allSettled(moved.map(fileId => drive.files.update({
+      fileId,
+      addParents: folderFor(source),
+      removeParents: folderFor(destination),
+      fields: "id,parents",
+      supportsAllDrives: true
+    })));
+    throw error;
+  }
+}
+
+export async function archiveOrder(id: string) {
+  await moveOrder(id, "active", "archived");
+}
+
+export async function restoreOrder(id: string) {
+  await moveOrder(id, "archived", "active");
+}
+
+export async function deleteArchivedOrder(id: string) {
+  const files = await getCompleteOrderFiles("archived", id);
+  const drive = getDrive();
+  const results = await Promise.allSettled(files.map(file => drive.files.delete({ fileId: file.id, supportsAllDrives: true })));
+  const failed = results.filter(result => result.status === "rejected");
+  if (failed.length) {
+    throw new Error("No se han podido eliminar todos los archivos del pedido archivado.");
+  }
+}
+
+export async function diagnoseFolderWrite(folderId: string, label: string) {
+  const drive = getDrive();
+  let testFileId = "";
+  try {
+    const created = await drive.files.create({
+      requestBody: {
+        name: `.fval-${label}-test-${Date.now()}.txt`,
+        parents: [folderId],
+        mimeType: "text/plain"
+      },
+      media: { mimeType: "text/plain", body: Readable.from(["FVAL connection test"]) },
+      fields: "id",
+      supportsAllDrives: true
+    });
+    testFileId = created.data.id ?? "";
+    if (!testFileId) return false;
+    await drive.files.delete({ fileId: testFileId, supportsAllDrives: true });
+    return true;
+  } catch {
+    if (testFileId) {
+      try { await drive.files.delete({ fileId: testFileId, supportsAllDrives: true }); } catch {}
+    }
+    return false;
+  }
+}
+
+export const getActiveFolderId = activeFolderId;
+export const getArchivedFolderId = archivedFolderId;
