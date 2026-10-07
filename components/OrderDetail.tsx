@@ -50,6 +50,9 @@ export default function OrderDetail({ initial }: { initial: Order }) {
   const [editingNote, setEditingNote] = useState(false);
   const [note, setNote] = useState(initial.notaInterna ?? "");
   const [noteBusy, setNoteBusy] = useState(false);
+  const [editingPrice, setEditingPrice] = useState<number | null>(null);
+  const [priceValue, setPriceValue] = useState("");
+  const [priceBusy, setPriceBusy] = useState(false);
 
   async function updateStatus() {
     setBusy(true);
@@ -95,6 +98,34 @@ export default function OrderDetail({ initial }: { initial: Order }) {
     }
   }
 
+  async function savePrice(index: number) {
+    const parsed = priceValue.trim() === "" ? null : Number(priceValue.replace(",", "."));
+    if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0)) {
+      setError("Introduce un precio válido o déjalo en blanco.");
+      return;
+    }
+    setPriceBusy(true);
+    setError("");
+    setSaved("");
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(order.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lineIndex: index, precio: parsed })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo actualizar el precio.");
+      setOrder(data.order);
+      setEditingPrice(null);
+      setPriceValue("");
+      setSaved("Precio actualizado. JSON, PDF y CSV reflejan el nuevo precio.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo actualizar el precio.");
+    } finally {
+      setPriceBusy(false);
+    }
+  }
+
   const encoded = encodeURIComponent(message(order));
 
   return (
@@ -116,8 +147,36 @@ export default function OrderDetail({ initial }: { initial: Order }) {
           <div className="line-card" key={i}>
             <div className="line-main">
               <div className="line-product">{line.producto}</div>
-              <div className="line-qty">{line.cantidad} {line.udm}</div>
-              <div className="line-qty">Precio: {money(line.precio)}</div>
+              <div className="line-qty"><strong>Cantidad:</strong> {line.cantidad}</div>
+              <div className="line-qty"><strong>UdM:</strong> {line.udm}</div>
+              <div className="line-qty"><strong>Precio:</strong> {money(line.precio)}</div>
+            </div>
+            <div className="no-print">
+              {editingPrice === i ? (
+                <div className="price-editor">
+                  <div className="field">
+                    <label htmlFor={`precio-linea-${i}`}>Precio €</label>
+                    <input
+                      id={`precio-linea-${i}`}
+                      inputMode="decimal"
+                      value={priceValue}
+                      onChange={e => setPriceValue(e.target.value)}
+                      placeholder="Vacío = sin precio"
+                    />
+                  </div>
+                  <div className="line-actions">
+                    <button type="button" disabled={priceBusy} onClick={() => savePrice(i)}>{priceBusy ? "GUARDANDO…" : "GUARDAR"}</button>
+                    <button type="button" disabled={priceBusy} onClick={() => { setEditingPrice(null); setPriceValue(""); }}>CANCELAR</button>
+                  </div>
+                </div>
+              ) : (
+                <button className="secondary price-action" type="button" onClick={() => {
+                  setEditingPrice(i);
+                  setPriceValue(line.precio == null ? "" : String(line.precio));
+                }}>
+                  {line.precio == null ? "AÑADIR PRECIO" : "EDITAR PRECIO"}
+                </button>
+              )}
             </div>
           </div>
         ))}
