@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Order, OrderStatus } from "@/lib/types";
 
@@ -41,7 +42,8 @@ function message(order: Order) {
   ].join("\n");
 }
 
-export default function OrderDetail({ initial }: { initial: Order }) {
+export default function OrderDetail({ initial, archived = false }: { initial: Order; archived?: boolean }) {
+  const router = useRouter();
   const [order, setOrder] = useState(initial);
   const [status, setStatus] = useState<OrderStatus>(initial.estado);
   const [busy, setBusy] = useState(false);
@@ -53,6 +55,7 @@ export default function OrderDetail({ initial }: { initial: Order }) {
   const [editingPrice, setEditingPrice] = useState<number | null>(null);
   const [priceValue, setPriceValue] = useState("");
   const [priceBusy, setPriceBusy] = useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
 
   async function updateStatus() {
     setBusy(true);
@@ -126,12 +129,61 @@ export default function OrderDetail({ initial }: { initial: Order }) {
     }
   }
 
+  async function archive() {
+    if (!window.confirm("¿Archivar este pedido?\n\nEl pedido desaparecerá de la lista de pedidos activos y pasará a Pedidos archivados.")) return;
+    setLifecycleBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(order.id)}/archive`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se ha podido archivar el pedido.");
+      router.push("/pedidos");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se ha podido archivar el pedido.");
+      setLifecycleBusy(false);
+    }
+  }
+
+  async function restore() {
+    if (!window.confirm("¿Restaurar este pedido?\n\nVolverá a la lista de pedidos activos.")) return;
+    setLifecycleBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(order.id)}/restore`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se ha podido restaurar el pedido.");
+      router.push("/pedidos");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se ha podido restaurar el pedido.");
+      setLifecycleBusy(false);
+    }
+  }
+
+  async function removePermanently() {
+    if (!window.confirm("¿Eliminar definitivamente este pedido?\n\nSe eliminarán permanentemente los archivos JSON, PDF y CSV.\n\nEsta acción no se puede deshacer.")) return;
+    setLifecycleBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(order.id)}/delete`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se ha podido eliminar definitivamente el pedido.");
+      router.push("/pedidos/archivados");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se ha podido eliminar definitivamente el pedido.");
+      setLifecycleBusy(false);
+    }
+  }
+
   const encoded = encodeURIComponent(message(order));
 
   return (
     <section className="card">
       <div className="no-print">
         <div className={statusClass(order.estado)}>{order.estado}</div>
+        {archived && <div className="meta" style={{ marginTop: 8 }}>PEDIDO ARCHIVADO</div>}
       </div>
       <h1 className="page-title" style={{ marginTop: 10 }}>{order.id}</h1>
 
@@ -139,6 +191,7 @@ export default function OrderDetail({ initial }: { initial: Order }) {
         <div className="summary-row"><strong>Fecha</strong><span>{dateEs(order.fecha)}</span></div>
         <div className="summary-row"><strong>Empleado</strong><span>{order.empleado.nombre}{order.empleado.departamento ? " · " + order.empleado.departamento : ""}</span></div>
         <div className="summary-row"><strong>Cliente</strong><span>{order.cliente.codigo} — {order.cliente.nombre}</span></div>
+        {order.actualizado && <div className="summary-row"><strong>Actualizado</strong><span>{dateTimeEs(order.actualizado)}</span></div>}
       </div>
 
       <h2 className="section-title">Productos</h2>
@@ -151,33 +204,35 @@ export default function OrderDetail({ initial }: { initial: Order }) {
               <div className="line-qty"><strong>UdM:</strong> {line.udm}</div>
               <div className="line-qty"><strong>Precio:</strong> {money(line.precio)}</div>
             </div>
-            <div className="no-print">
-              {editingPrice === i ? (
-                <div className="price-editor">
-                  <div className="field">
-                    <label htmlFor={`precio-linea-${i}`}>Precio €</label>
-                    <input
-                      id={`precio-linea-${i}`}
-                      inputMode="decimal"
-                      value={priceValue}
-                      onChange={e => setPriceValue(e.target.value)}
-                      placeholder="Vacío = sin precio"
-                    />
+            {!archived && (
+              <div className="no-print">
+                {editingPrice === i ? (
+                  <div className="price-editor">
+                    <div className="field">
+                      <label htmlFor={`precio-linea-${i}`}>Precio €</label>
+                      <input
+                        id={`precio-linea-${i}`}
+                        inputMode="decimal"
+                        value={priceValue}
+                        onChange={e => setPriceValue(e.target.value)}
+                        placeholder="Vacío = sin precio"
+                      />
+                    </div>
+                    <div className="line-actions">
+                      <button type="button" disabled={priceBusy} onClick={() => savePrice(i)}>{priceBusy ? "GUARDANDO…" : "GUARDAR"}</button>
+                      <button type="button" disabled={priceBusy} onClick={() => { setEditingPrice(null); setPriceValue(""); }}>CANCELAR</button>
+                    </div>
                   </div>
-                  <div className="line-actions">
-                    <button type="button" disabled={priceBusy} onClick={() => savePrice(i)}>{priceBusy ? "GUARDANDO…" : "GUARDAR"}</button>
-                    <button type="button" disabled={priceBusy} onClick={() => { setEditingPrice(null); setPriceValue(""); }}>CANCELAR</button>
-                  </div>
-                </div>
-              ) : (
-                <button className="secondary price-action" type="button" onClick={() => {
-                  setEditingPrice(i);
-                  setPriceValue(line.precio == null ? "" : String(line.precio));
-                }}>
-                  {line.precio == null ? "AÑADIR PRECIO" : "EDITAR PRECIO"}
-                </button>
-              )}
-            </div>
+                ) : (
+                  <button className="secondary price-action" type="button" onClick={() => {
+                    setEditingPrice(i);
+                    setPriceValue(line.precio == null ? "" : String(line.precio));
+                  }}>
+                    {line.precio == null ? "AÑADIR PRECIO" : "EDITAR PRECIO"}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -187,11 +242,11 @@ export default function OrderDetail({ initial }: { initial: Order }) {
 
       <div className="no-print internal-note-panel">
         <h2 className="section-title">Nota Interna</h2>
-        {!editingNote ? (
+        {archived || !editingNote ? (
           <>
             <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{order.notaInterna || "—"}</p>
             {order.notaInternaActualizada && <div className="meta">Actualizada: {dateTimeEs(order.notaInternaActualizada)}</div>}
-            <button className="secondary" type="button" onClick={() => { setNote(order.notaInterna ?? ""); setEditingNote(true); }}>EDITAR NOTA</button>
+            {!archived && <button className="secondary" type="button" onClick={() => { setNote(order.notaInterna ?? ""); setEditingNote(true); }}>EDITAR NOTA</button>}
           </>
         ) : (
           <div className="grid">
@@ -208,23 +263,28 @@ export default function OrderDetail({ initial }: { initial: Order }) {
       </div>
 
       <div className="no-print">
-        <hr className="sep" />
-        <div className="grid two">
-          <div className="field">
-            <label htmlFor="cambiar-estado">Estado</label>
-            <select id="cambiar-estado" value={status} onChange={e => setStatus(e.target.value as OrderStatus)}>
-              <option value="NUEVO">NUEVO</option>
-              <option value="EN PROCESO">EN PROCESO</option>
-              <option value="LISTO">LISTO</option>
-              <option value="ENTREGADO">ENTREGADO</option>
-            </select>
-          </div>
-          <div className="field" style={{ alignSelf: "end" }}>
-            <button className="primary" type="button" disabled={busy || status === order.estado} onClick={updateStatus}>
-              {busy ? "ACTUALIZANDO…" : "ACTUALIZAR ESTADO"}
-            </button>
-          </div>
-        </div>
+        {!archived && (
+          <>
+            <hr className="sep" />
+            <div className="grid two">
+              <div className="field">
+                <label htmlFor="cambiar-estado">Estado</label>
+                <select id="cambiar-estado" value={status} onChange={e => setStatus(e.target.value as OrderStatus)}>
+                  <option value="NUEVO">NUEVO</option>
+                  <option value="EN PROCESO">EN PROCESO</option>
+                  <option value="LISTO">LISTO</option>
+                  <option value="ENTREGADO">ENTREGADO</option>
+                </select>
+              </div>
+              <div className="field" style={{ alignSelf: "end" }}>
+                <button className="primary" type="button" disabled={busy || status === order.estado} onClick={updateStatus}>
+                  {busy ? "ACTUALIZANDO…" : "ACTUALIZAR ESTADO"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
         {error && <div className="error" role="alert">{error}</div>}
         {saved && <div className="success-note">{saved}</div>}
 
@@ -236,6 +296,16 @@ export default function OrderDetail({ initial }: { initial: Order }) {
           <a className="whatsapp" target="_blank" rel="noreferrer" href={`https://wa.me/34652388946?text=${encoded}`}>ENVIAR A NAVE</a>
           <a className="whatsapp" target="_blank" rel="noreferrer" href={`https://wa.me/34690371977?text=${encoded}`}>ENVIAR A PUESTO</a>
         </div>
+
+        <hr className="sep" />
+        {archived ? (
+          <div className="actions">
+            <button className="primary" type="button" disabled={lifecycleBusy} onClick={restore}>RESTAURAR PEDIDO</button>
+            <button className="danger" type="button" disabled={lifecycleBusy} onClick={removePermanently}>ELIMINAR DEFINITIVAMENTE</button>
+          </div>
+        ) : (
+          <button className="secondary" type="button" disabled={lifecycleBusy} onClick={archive}>ARCHIVAR PEDIDO</button>
+        )}
       </div>
     </section>
   );
