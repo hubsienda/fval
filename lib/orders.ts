@@ -221,7 +221,8 @@ function normaliseOrder(raw: Order): Order {
       return { producto: candidate.producto, cantidad: candidate.cantidad, udm, precio };
     }),
     notaInterna: typeof raw.notaInterna === "string" ? raw.notaInterna : "",
-    notaInternaActualizada: typeof raw.notaInternaActualizada === "string" ? raw.notaInternaActualizada : undefined
+    notaInternaActualizada: typeof raw.notaInternaActualizada === "string" ? raw.notaInternaActualizada : undefined,
+    actualizado: typeof raw.actualizado === "string" ? raw.actualizado : undefined
   };
 }
 
@@ -254,10 +255,11 @@ export async function getOrder(id: string): Promise<Order | null> {
 }
 
 export async function updateOrder(order: Order) {
-  await replace(order.id + ".json", "application/json", JSON.stringify(order, null, 2));
-  await replace(order.id + ".pdf", "application/pdf", await orderPdf(order));
-  await replace(order.id + ".csv", "text/csv; charset=utf-8", orderCsv(order));
-  return order;
+  const updated: Order = { ...order, actualizado: new Date().toISOString() };
+  await replace(updated.id + ".json", "application/json", JSON.stringify(updated, null, 2));
+  await replace(updated.id + ".pdf", "application/pdf", await orderPdf(updated));
+  await replace(updated.id + ".csv", "text/csv; charset=utf-8", orderCsv(updated));
+  return updated;
 }
 
 export async function updateInternalNote(order: Order, notaInterna: string) {
