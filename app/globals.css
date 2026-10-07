@@ -141,6 +141,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .line-qty { margin-top: 4px; color: var(--muted); }
 .line-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .line-actions button { min-height: 44px; border-radius: 9px; border: 1px solid var(--border); background: white; font-weight: 700; }
+.price-editor { display: grid; gap: 10px; margin-top: 10px; }
+.price-action { width: 100%; margin-top: 10px; }
 .product-entry {
   display: grid;
   grid-template-columns: 1fr;
@@ -226,6 +228,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .product-entry .primary { grid-column: 1 / -1; }
   .product-entry .primary { min-width: 120px; }
   .line-card { grid-template-columns: minmax(0,1fr) auto; align-items: center; }
+  .price-action { width: auto; margin-top: 0; }
   .line-actions { grid-template-columns: auto auto; }
   .toolbar { grid-template-columns: 1.5fr 1fr; }
   .order-item { grid-template-columns: 1.35fr 1fr auto; align-items: center; }
