@@ -14,6 +14,32 @@ const folderId = () => {
 
 const q = (value: string) => value.replace(/'/g, "\\'");
 
+type DriveErrorShape = {
+  message?: string;
+  code?: number | string;
+  response?: {
+    status?: number;
+    data?: {
+      error?: {
+        code?: number | string;
+        message?: string;
+        errors?: Array<{ reason?: string; message?: string }>;
+      };
+    };
+  };
+};
+
+function logDriveError(context: string, error: unknown) {
+  const e = (error && typeof error === "object" ? error : {}) as DriveErrorShape;
+  const googleError = e.response?.data?.error;
+  console.error(context, {
+    message: googleError?.message ?? e.message ?? "Unknown Google Drive error",
+    httpStatus: e.response?.status,
+    code: googleError?.code ?? e.code,
+    reason: googleError?.errors?.[0]?.reason
+  });
+}
+
 function displayDate(iso: string) {
   const [y,m,d] = iso.split("-");
   return y && m && d ? `${d}/${m}/${y}` : iso;
@@ -104,7 +130,9 @@ async function exists(id: string) {
   const res = await drive.files.list({
     q: `'${q(folderId())}' in parents and name='${q(id)}.json' and trashed=false`,
     fields: "files(id)",
-    pageSize: 1
+    pageSize: 1,
+    includeItemsFromAllDrives: true,
+    supportsAllDrives: true
   });
   return Boolean(res.data.files?.length);
 }
@@ -130,7 +158,8 @@ async function upload(name: string, mimeType: string, body: Buffer | string) {
   const res = await drive.files.create({
     requestBody: { name, parents: [folderId()], mimeType },
     media: { mimeType, body: mediaBody },
-    fields: "id"
+    fields: "id",
+    supportsAllDrives: true
   });
   if (!res.data.id) throw new Error("Drive no devolvió el ID del archivo.");
   return res.data.id;
@@ -141,7 +170,9 @@ async function findFile(name: string) {
   const res = await drive.files.list({
     q: `'${q(folderId())}' in parents and name='${q(name)}' and trashed=false`,
     fields: "files(id,name)",
-    pageSize: 2
+    pageSize: 2,
+    includeItemsFromAllDrives: true,
+    supportsAllDrives: true
   });
   return res.data.files?.[0]?.id ?? null;
 }
@@ -151,7 +182,7 @@ async function replace(name: string, mimeType: string, body: Buffer | string) {
   const id = await findFile(name);
   if (!id) return upload(name, mimeType, body);
   const mediaBody = typeof body === "string" ? Readable.from([body]) : Readable.from(body);
-  await drive.files.update({ fileId: id, media: { mimeType, body: mediaBody } });
+  await drive.files.update({ fileId: id, media: { mimeType, body: mediaBody }, supportsAllDrives: true });
   return id;
 }
 
@@ -168,8 +199,9 @@ export async function saveOrder(draft: OrderDraft) {
     created.push(await upload(id + ".csv", "text/csv; charset=utf-8", csv));
     return order;
   } catch (error) {
+    logDriveError("FVAL Google Drive order write failed", error);
     const drive = getDrive();
-    await Promise.allSettled(created.map(fileId => drive.files.delete({ fileId })));
+    await Promise.allSettled(created.map(fileId => drive.files.delete({ fileId, supportsAllDrives: true })));
     throw error;
   }
 }
@@ -180,12 +212,14 @@ export async function listOrders(): Promise<Order[]> {
     q: `'${q(folderId())}' in parents and mimeType='application/json' and trashed=false`,
     fields: "files(id,name,modifiedTime)",
     orderBy: "modifiedTime desc",
-    pageSize: 200
+    pageSize: 200,
+    includeItemsFromAllDrives: true,
+    supportsAllDrives: true
   });
   const orders = await Promise.all((res.data.files ?? []).map(async f => {
     if (!f.id) return null;
     try {
-      const data = await drive.files.get({ fileId: f.id, alt: "media" }, { responseType: "text" });
+      const data = await drive.files.get({ fileId: f.id, alt: "media", supportsAllDrives: true }, { responseType: "text" });
       return (typeof data.data === "string" ? JSON.parse(data.data) : data.data) as Order;
     } catch { return null; }
   }));
@@ -196,7 +230,7 @@ export async function getOrder(id: string): Promise<Order | null> {
   const fileId = await findFile(id + ".json");
   if (!fileId) return null;
   const drive = getDrive();
-  const data = await drive.files.get({ fileId, alt: "media" }, { responseType: "text" });
+  const data = await drive.files.get({ fileId, alt: "media", supportsAllDrives: true }, { responseType: "text" });
   return (typeof data.data === "string" ? JSON.parse(data.data) : data.data) as Order;
 }
 
@@ -211,7 +245,7 @@ export async function getOrderFile(id: string, type: "pdf" | "csv") {
   const fileId = await findFile(id + "." + type);
   if (!fileId) return null;
   const drive = getDrive();
-  const data = await drive.files.get({ fileId, alt: "media" }, { responseType: "arraybuffer" });
+  const data = await drive.files.get({ fileId, alt: "media", supportsAllDrives: true }, { responseType: "arraybuffer" });
   return Buffer.from(data.data as ArrayBuffer);
 }
 
@@ -220,7 +254,9 @@ export async function diagnoseGoogle() {
   const res = await drive.files.list({
     q: `'${q(folderId())}' in parents and trashed=false`,
     fields: "files(id)",
-    pageSize: 1
+    pageSize: 1,
+    includeItemsFromAllDrives: true,
+    supportsAllDrives: true
   });
   return { driveReadable: Array.isArray(res.data.files) };
 }
