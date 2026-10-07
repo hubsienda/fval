@@ -37,3 +37,14 @@ export type Order = {
 };
 
 export type OrderDraft = Omit<Order, "id" | "notaInternaActualizada" | "actualizado">;
+
+
+export type OrderIndexEntry = {
+  id: string;
+  fecha: string;
+  cliente: string;
+  codigoCliente: string;
+  empleado: string;
+  estado: OrderStatus;
+  actualizado?: string;
+};

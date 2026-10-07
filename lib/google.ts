@@ -1,5 +1,6 @@
 import "server-only";
 import { google } from "googleapis";
+import { unstable_cache } from "next/cache";
 import type { Client, Employee, Product } from "./types";
 
 function required(name: string) {
@@ -50,7 +51,7 @@ function cell(headers: string[], row: string[], names: string[]) {
   return "";
 }
 
-export async function getClients(): Promise<Client[]> {
+async function fetchClients(): Promise<Client[]> {
   const { headers, rows } = await readRows(required("GOOGLE_CLIENTES_SHEET_ID"));
   return rows.map(row => ({
     codigo: cell(headers, row, ["CODIGO", "CÓDIGO"]),
@@ -63,7 +64,7 @@ export async function getClients(): Promise<Client[]> {
   })).filter(x => x.codigo || x.nombre);
 }
 
-export async function getProducts(): Promise<Product[]> {
+async function fetchProducts(): Promise<Product[]> {
   const { headers, rows } = await readRows(required("GOOGLE_PRODUCTOS_SHEET_ID"));
   const idIdx = headers.findIndex(h => h === "ID PRODUCTO" || h === "ID");
   const notesIdx = headers.findIndex(h => h === "NOTAS");
@@ -82,7 +83,7 @@ export async function getProducts(): Promise<Product[]> {
   }).filter(x => x.nombre);
 }
 
-export async function getEmployees(): Promise<Employee[]> {
+async function fetchEmployees(): Promise<Employee[]> {
   const { headers, rows } = await readRows(required("GOOGLE_EMPLEADOS_SHEET_ID"));
   return rows.map(row => ({
     id: cell(headers, row, ["ID EMPLEADO", "ID"]),
@@ -90,3 +91,19 @@ export async function getEmployees(): Promise<Employee[]> {
     departamento: cell(headers, row, ["DEPARTAMENTO"])
   })).filter(x => x.id || x.nombre);
 }
+
+
+export const getClients = unstable_cache(fetchClients, ["fval-clients"], {
+  revalidate: 300,
+  tags: ["fval-master-data"]
+});
+
+export const getProducts = unstable_cache(fetchProducts, ["fval-products"], {
+  revalidate: 300,
+  tags: ["fval-master-data"]
+});
+
+export const getEmployees = unstable_cache(fetchEmployees, ["fval-employees"], {
+  revalidate: 300,
+  tags: ["fval-master-data"]
+});

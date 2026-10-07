@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import type { Order, OrderStatus } from "@/lib/types";
+import type { OrderIndexEntry, OrderStatus } from "@/lib/types";
 
 function dateEs(iso: string) {
   const [y,m,d] = iso.split("-");
@@ -12,7 +12,7 @@ function statusClass(status: string) {
   return "status status-" + status.replace(/\s+/g, "-");
 }
 
-export default function OrdersList({ orders, basePath = "/pedidos" }: { orders: Order[]; basePath?: string }) {
+export default function OrdersList({ orders, basePath = "/pedidos" }: { orders: OrderIndexEntry[]; basePath?: string }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<OrderStatus | "">("");
 
@@ -25,9 +25,9 @@ export default function OrdersList({ orders, basePath = "/pedidos" }: { orders: 
         order.id,
         order.fecha,
         dateEs(order.fecha),
-        order.cliente.codigo,
-        order.cliente.nombre,
-        order.empleado.nombre,
+        order.codigoCliente,
+        order.cliente,
+        order.empleado,
         order.estado
       ].join(" ").toLocaleLowerCase("es");
       return haystack.includes(needle);
@@ -58,11 +58,11 @@ export default function OrdersList({ orders, basePath = "/pedidos" }: { orders: 
           <Link className="order-item" href={`${basePath}/${encodeURIComponent(order.id)}`} key={order.id}>
             <div>
               <div className="order-id">{order.id}</div>
-              <div className="meta">{order.cliente.codigo} — {order.cliente.nombre}</div>
+              <div className="meta">{order.codigoCliente} — {order.cliente}</div>
             </div>
             <div className="meta">
               <div>{dateEs(order.fecha)}</div>
-              <div>{order.empleado.nombre}</div>
+              <div>{order.empleado}</div>
             </div>
             <div className={statusClass(order.estado)}>{order.estado}</div>
           </Link>
