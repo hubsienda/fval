@@ -16,6 +16,7 @@ export default function Header() {
       <nav>
         <Link href="/pedido">Nueva venta</Link>
         <Link href="/pedidos">Pedidos</Link>
+        <Link href="/pedidos/archivados">Archivados</Link>
         <form action="/api/auth/logout" method="post">
           <button className="link-button" type="submit">Cerrar sesión</button>
         </form>
