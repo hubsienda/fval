@@ -27,8 +27,22 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const order = await getOrder(id);
     if (!order) return NextResponse.json({ error: "Pedido no encontrado." }, { status: 404 });
 
-    if (typeof body?.notaInterna === "string" && body?.estado === undefined) {
+    if (typeof body?.notaInterna === "string" && body?.estado === undefined && body?.lineIndex === undefined) {
       const updated = await updateInternalNote(order, body.notaInterna);
+      return NextResponse.json({ order: updated });
+    }
+
+    if (Number.isInteger(body?.lineIndex) && body?.estado === undefined) {
+      const lineIndex = body.lineIndex as number;
+      if (lineIndex < 0 || lineIndex >= order.lineas.length) {
+        return NextResponse.json({ error: "Línea de producto no válida." }, { status: 400 });
+      }
+      const precio = body?.precio;
+      if (!(precio === null || (typeof precio === "number" && Number.isFinite(precio) && precio >= 0))) {
+        return NextResponse.json({ error: "Precio no válido." }, { status: 400 });
+      }
+      const lineas = order.lineas.map((line, index) => index === lineIndex ? { ...line, precio } : line);
+      const updated = await updateOrder({ ...order, lineas });
       return NextResponse.json({ order: updated });
     }
 
@@ -38,6 +52,6 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     return NextResponse.json({ order: updated });
   } catch (error) {
     console.error("FVAL updateOrder:", error instanceof Error ? error.message : error);
-    return NextResponse.json({ error: "No se ha podido actualizar el estado del pedido." }, { status: 503 });
+    return NextResponse.json({ error: "No se ha podido actualizar el pedido." }, { status: 503 });
   }
 }
