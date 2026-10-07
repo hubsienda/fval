@@ -364,7 +364,7 @@ async function getOrderFrom(location: OrderLocation, id: string): Promise<Order 
 
 export async function saveOrder(draft: OrderDraft) {
   const id = await generateOrderId();
-  const order: Order = { ...draft, id };
+  const order: Order = { ...draft, id, actualizado: new Date().toISOString() };
   const files = [
     { name: id + ".json", mimeType: "application/json", body: JSON.stringify(order, null, 2) },
     { name: id + ".pdf", mimeType: "application/pdf", body: await orderPdf(order) },
