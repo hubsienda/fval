@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { isAuthenticated } from "@/lib/auth";
 
-export default async function Home() {
-  redirect((await isAuthenticated()) ? "/pedido" : "/login");
+export default function Home() {
+  redirect("/login");
 }
