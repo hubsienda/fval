@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { Readable } from "stream";
 import { isAuthenticated } from "@/lib/auth";
-import { getClients, getDrive, getEmployees, getProducts } from "@/lib/google";
+import { getClients, getEmployees, getProducts } from "@/lib/google";
+import { diagnoseFolderWrite, getActiveFolderId, getArchivedFolderId } from "@/lib/orders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,50 +13,15 @@ export async function GET() {
     clientes: false,
     productos: false,
     empleados: false,
-    pedidosFvalWritable: false
+    pedidosActivosWritable: false,
+    pedidosArchivadosWritable: false
   };
 
-  try {
-    await getClients();
-    result.clientes = true;
-  } catch {}
-
-  try {
-    await getProducts();
-    result.productos = true;
-  } catch {}
-
-  try {
-    await getEmployees();
-    result.empleados = true;
-  } catch {}
-
-  let testFileId = "";
-  try {
-    const folderId = process.env.GOOGLE_PEDIDOS_FOLDER_ID;
-    if (!folderId) throw new Error("GOOGLE_PEDIDOS_FOLDER_ID no configurado.");
-    const drive = getDrive();
-    const created = await drive.files.create({
-      requestBody: {
-        name: ".fval-connection-test-" + Date.now() + ".txt",
-        parents: [folderId],
-        mimeType: "text/plain"
-      },
-      media: {
-        mimeType: "text/plain",
-        body: Readable.from(["FVAL connection test"])
-      },
-      fields: "id",
-      supportsAllDrives: true
-    });
-    testFileId = created.data.id ?? "";
-    result.pedidosFvalWritable = Boolean(testFileId);
-    if (testFileId) await drive.files.delete({ fileId: testFileId, supportsAllDrives: true });
-  } catch (error) {
-    if (testFileId) {
-      try { await getDrive().files.delete({ fileId: testFileId, supportsAllDrives: true }); } catch {}
-    }
-  }
+  try { await getClients(); result.clientes = true; } catch {}
+  try { await getProducts(); result.productos = true; } catch {}
+  try { await getEmployees(); result.empleados = true; } catch {}
+  try { result.pedidosActivosWritable = await diagnoseFolderWrite(getActiveFolderId(), "activos"); } catch {}
+  try { result.pedidosArchivadosWritable = await diagnoseFolderWrite(getArchivedFolderId(), "archivados"); } catch {}
 
   const ok = Object.values(result).every(Boolean);
   return NextResponse.json({ ok, checks: result }, { status: ok ? 200 : 503 });

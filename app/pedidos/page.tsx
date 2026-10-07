@@ -11,7 +11,7 @@ export default async function PedidosPage() {
     return (
       <section className="card">
         <h1 className="page-title">Pedidos</h1>
-        <p className="lead">Consulta pedidos archivados y actualiza su estado.</p>
+        <p className="lead">Consulta pedidos activos y actualiza su estado.</p>
         <OrdersList orders={orders} />
       </section>
     );
