@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { listOrders, saveOrder } from "@/lib/orders";
-import { ORDER_STATUSES, type OrderDraft } from "@/lib/types";
+import { ORDER_STATUSES, ORDER_UDMS, type OrderDraft } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,8 +14,14 @@ function validDraft(value: unknown): value is OrderDraft {
     x.empleado && typeof x.empleado.id === "string" && typeof x.empleado.nombre === "string" &&
     x.cliente && typeof x.cliente.codigo === "string" && typeof x.cliente.nombre === "string" &&
     Array.isArray(x.lineas) && x.lineas.length > 0 &&
-    x.lineas.every(line => line && typeof line.producto === "string" && line.producto.trim() && typeof line.cantidad === "number" && Number.isFinite(line.cantidad) && line.cantidad > 0) &&
+    x.lineas.every(line => line &&
+      typeof line.producto === "string" && line.producto.trim() &&
+      typeof line.cantidad === "number" && Number.isFinite(line.cantidad) && line.cantidad > 0 &&
+      ORDER_UDMS.includes(line.udm) &&
+      (line.precio === null || (typeof line.precio === "number" && Number.isFinite(line.precio) && line.precio >= 0))
+    ) &&
     typeof x.comentarios === "string" &&
+    typeof x.notaInterna === "string" &&
     x.estado === "NUEVO" &&
     ORDER_STATUSES.includes(x.estado)
   );

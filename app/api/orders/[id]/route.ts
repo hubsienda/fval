@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
-import { getOrder, updateOrder } from "@/lib/orders";
+import { getOrder, updateInternalNote, updateOrder } from "@/lib/orders";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -24,10 +24,16 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const { id } = await context.params;
   try {
     const body = await request.json();
-    const estado = body?.estado as OrderStatus;
-    if (!ORDER_STATUSES.includes(estado)) return NextResponse.json({ error: "Estado no válido." }, { status: 400 });
     const order = await getOrder(id);
     if (!order) return NextResponse.json({ error: "Pedido no encontrado." }, { status: 404 });
+
+    if (typeof body?.notaInterna === "string" && body?.estado === undefined) {
+      const updated = await updateInternalNote(order, body.notaInterna);
+      return NextResponse.json({ order: updated });
+    }
+
+    const estado = body?.estado as OrderStatus;
+    if (!ORDER_STATUSES.includes(estado)) return NextResponse.json({ error: "Estado no válido." }, { status: 400 });
     const updated = await updateOrder({ ...order, estado });
     return NextResponse.json({ order: updated });
   } catch (error) {
