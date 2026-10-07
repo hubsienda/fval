@@ -33,6 +33,7 @@ export type Order = {
   comentarios: string;
   notaInterna: string;
   notaInternaActualizada?: string;
+  actualizado?: string;
 };
 
-export type OrderDraft = Omit<Order, "id" | "notaInternaActualizada">;
+export type OrderDraft = Omit<Order, "id" | "notaInternaActualizada" | "actualizado">;
