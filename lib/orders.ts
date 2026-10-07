@@ -14,6 +14,32 @@ const folderId = () => {
 
 const q = (value: string) => value.replace(/'/g, "\\'");
 
+type DriveErrorShape = {
+  message?: string;
+  code?: number | string;
+  response?: {
+    status?: number;
+    data?: {
+      error?: {
+        code?: number | string;
+        message?: string;
+        errors?: Array<{ reason?: string; message?: string }>;
+      };
+    };
+  };
+};
+
+function logDriveError(context: string, error: unknown) {
+  const e = (error && typeof error === "object" ? error : {}) as DriveErrorShape;
+  const googleError = e.response?.data?.error;
+  console.error(context, {
+    message: googleError?.message ?? e.message ?? "Unknown Google Drive error",
+    httpStatus: e.response?.status,
+    code: googleError?.code ?? e.code,
+    reason: googleError?.errors?.[0]?.reason
+  });
+}
+
 function displayDate(iso: string) {
   const [y,m,d] = iso.split("-");
   return y && m && d ? `${d}/${m}/${y}` : iso;
@@ -173,6 +199,7 @@ export async function saveOrder(draft: OrderDraft) {
     created.push(await upload(id + ".csv", "text/csv; charset=utf-8", csv));
     return order;
   } catch (error) {
+    logDriveError("FVAL Google Drive order write failed", error);
     const drive = getDrive();
     await Promise.allSettled(created.map(fileId => drive.files.delete({ fileId, supportsAllDrives: true })));
     throw error;
