@@ -46,14 +46,15 @@ export async function GET() {
         mimeType: "text/plain",
         body: Readable.from(["FVAL connection test"])
       },
-      fields: "id"
+      fields: "id",
+      supportsAllDrives: true
     });
     testFileId = created.data.id ?? "";
     result.pedidosFvalWritable = Boolean(testFileId);
-    if (testFileId) await drive.files.delete({ fileId: testFileId });
+    if (testFileId) await drive.files.delete({ fileId: testFileId, supportsAllDrives: true });
   } catch (error) {
     if (testFileId) {
-      try { await getDrive().files.delete({ fileId: testFileId }); } catch {}
+      try { await getDrive().files.delete({ fileId: testFileId, supportsAllDrives: true }); } catch {}
     }
   }
 
