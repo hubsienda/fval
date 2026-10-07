@@ -227,7 +227,9 @@ export async function diagnoseGoogle() {
   const res = await drive.files.list({
     q: `'${q(folderId())}' in parents and trashed=false`,
     fields: "files(id)",
-    pageSize: 1
+    pageSize: 1,
+    includeItemsFromAllDrives: true,
+    supportsAllDrives: true
   });
   return { driveReadable: Array.isArray(res.data.files) };
 }
