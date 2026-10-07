@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { Client, Employee, Order, OrderLine, Product } from "@/lib/types";
 
 type SearchOption = {
@@ -14,16 +14,19 @@ function SearchPicker({
   placeholder,
   options,
   valueLabel,
-  onSelect
+  onSelect,
+  productInput = false
 }: {
   label: string;
   placeholder: string;
   options: SearchOption[];
   valueLabel: string;
   onSelect: (key: string) => void;
+  productInput?: boolean;
 }) {
   const [query, setQuery] = useState(valueLabel);
   const [open, setOpen] = useState(false);
+  useEffect(() => setQuery(valueLabel), [valueLabel]);
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("es");
     if (!needle) return options.slice(0, 30);
@@ -45,6 +48,7 @@ function SearchPicker({
         value={query}
         placeholder={placeholder}
         autoComplete="off"
+        data-product-picker={productInput ? "true" : undefined}
         onFocus={() => setOpen(true)}
         onChange={e => {
           setQuery(e.target.value);
@@ -171,7 +175,7 @@ export default function OrderForm({
     setProductName("");
     setQuantity("");
     setTimeout(() => {
-      const productInput = document.querySelector<HTMLInputElement>('[data-product-picker="true"]');
+      const productInput = document.querySelector<HTMLInputElement>('input[data-product-picker="true"]');
       productInput?.focus();
     }, 0);
   }
@@ -303,6 +307,7 @@ export default function OrderForm({
             placeholder="Buscar producto…"
             options={productOptions}
             valueLabel={productName}
+            productInput
             onSelect={key => {
               const [name] = key.split("::");
               setProductName(name || "");
